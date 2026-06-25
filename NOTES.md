@@ -1,88 +1,63 @@
-# NOTES.md — The Breach Report
+# InkFeed SQL Injection Investigation
 
-This file is part of the deliverable. We grade the **thinking**, not the length.
-Fill it in as you work, not at the very end. If you can explain what you did and
-why, you have passed, even if your sentences are short.
+## 1. Vulnerability
 
----
+The search endpoint was vulnerable to SQL injection because the user-provided
+search value was concatenated directly into a native SQL query.
 
-## 1. First impressions
+The database could not distinguish between normal search data and SQL commands.
 
-Before attacking anything, write down what the app does and where untrusted input
-reaches the backend. Which inputs does a stranger control?
+## 2. Initial test
 
-_Your notes:_
+I first entered a single quote into the search input:
 
----
+    '
 
-## 2. Reproducing the breach
+This caused an SQL syntax error in the backend, which showed that the input
+was being inserted directly into the SQL query.
 
-### What I've typed to test the vulnerability and where
+## 3. Payload used
 
-```
-(paste the exact text you put here)
-```
+The payload used to reproduce the data leak was:
 
-### What each part of it does
+    ' UNION SELECT id, email, password FROM users -- 
 
-Break your payload into pieces and explain each one. For example: what closes the
-original string, what pulls in the other table, what hides the rest of the query.
+## 4. Payload explanation
 
-_Your notes:_
+- The first quote closes the string used by the original LIKE condition.
+- UNION appends the output of another SELECT query to the post search results.
+- SELECT id, email, password FROM users reads data from the private users table.
+- The users columns match the three columns expected by the original result:
+  id, title, and body.
+- The double dash comments out the remaining part of the original query.
 
-### What came back
+As a result, user emails and password hashes were rendered as normal search
+results in the frontend.
 
-What data appeared that should never have been there? Paste
-a line or two. A screenshot is ideal.
+## 5. Root cause
 
-_Your notes:_
+The root cause was SQL query construction through string concatenation.
 
----
+Untrusted input was added directly to the SQL command, allowing the search
+value to change the structure of the query.
 
-## 3. Why it worked (root cause)
+## 6. Fix
 
-In your own words: why was the database willing to run that instead of the expected behaviour?
+I replaced the dynamically constructed native SQL query with the Spring Data
+repository method:
 
-_Your notes:_
+    findByTitleContainingIgnoreCaseOrBodyContainingIgnoreCase(q, q)
 
----
+I selected this solution because Spring binds the input as data instead of
+inserting it into the SQL command.
 
-## 4. The fix
+The input can no longer modify the structure of the query.
 
-### Which road did I take?
+## 7. Verification
 
-(parameterized native query / the safe repository method / something else)
+After applying the fix:
 
-_Your notes:_
-
-### Why this fixes the root cause and not just the symptom
-
-"The error went away" is not an answer. Explain why injection is now impossible,
-not just unlikely.
-
-_Your notes:_
-
-### Why I did NOT just block quotes / the word UNION
-
-_Your notes:_
-
----
-
-## 5. Proof the fix holds
-
-I re-ran my original payload after fixing it. Result:
-
-_Your notes:_
-
-A normal search (`pen`, `color`, `comic`) still returns the right posts:
-
-_(yes / no, and anything you noticed)_
-
----
-
-## 6. If I had another hour
-
-What else in this app worries you? (the comment endpoint, the open API, the fact
-that the backend can read password hashes at all...)
-
-_Your notes:_
+- The original SQL injection payload returned no user data.
+- Searches for pen, color, and comic continued to work.
+- Adding comments to posts continued to work.
+- No user email or password hash was exposed.
