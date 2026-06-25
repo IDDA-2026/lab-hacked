@@ -10,6 +10,9 @@ import com.ironhack.simple_auth.repository.CommentRepository;
 import com.ironhack.simple_auth.repository.PostRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -32,7 +35,10 @@ public class PostController {
         this.commentRepository = commentRepository;
     }
 
-    /** The full feed. Newest stuff first would be nicer, I know, but this is fine for the lab. */
+    /**
+     * The full feed. Newest stuff first would be nicer, I know, but this is fine
+     * for the lab.
+     */
     @GetMapping
     public List<PostView> all() {
         return postRepository.findAll().stream().map(PostView::from).toList();
@@ -40,11 +46,14 @@ public class PostController {
 
     @GetMapping("/search")
     @SuppressWarnings("unchecked")
-    public List<SearchResult> search(@RequestParam(name = "q", defaultValue = "") String q) {
+    @Query("SELECT p FROM Post p WHERE p.title LIKE %:q% OR p.body LIKE %:q%")
+    public List<SearchResult> search(@RequestParam String q) {
         String sql = "SELECT id, title, body FROM posts " +
-                "WHERE title LIKE '%" + q + "%' OR body LIKE '%" + q + "%'";
-
-        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
+                "WHERE title LIKE CONCAT('%', :q, '%') " +
+                "OR body LIKE CONCAT('%', :q, '%')";
+        List<Object[]> rows = entityManager.createNativeQuery(sql)
+                .setParameter("q", q)
+                .getResultList();
 
         return rows.stream()
                 .map(row -> new SearchResult(
@@ -62,7 +71,8 @@ public class PostController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Post not found"));
 
         String authorName = (request.authorName() == null || request.authorName().isBlank())
-                ? "Anonymous" : request.authorName();
+                ? "Anonymous"
+                : request.authorName();
 
         Comment comment = new Comment(authorName, request.body(), post);
         Comment saved = commentRepository.save(comment);
