@@ -10,6 +10,8 @@ import com.ironhack.simple_auth.repository.CommentRepository;
 import com.ironhack.simple_auth.repository.PostRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -42,9 +44,12 @@ public class PostController {
     @SuppressWarnings("unchecked")
     public List<SearchResult> search(@RequestParam(name = "q", defaultValue = "") String q) {
         String sql = "SELECT id, title, body FROM posts " +
-                "WHERE title LIKE '%" + q + "%' OR body LIKE '%" + q + "%'";
+                     "WHERE title LIKE :searchParam OR body LIKE :searchParam";
 
-        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
+        Query query = entityManager.createNativeQuery(sql);
+        query.setParameter("searchParam", "%" + q + "%");
+
+        List<Object[]> rows = query.getResultList();
 
         return rows.stream()
                 .map(row -> new SearchResult(

@@ -11,7 +11,14 @@ why, you have passed, even if your sentences are short.
 Before attacking anything, write down what the app does and where untrusted input
 reaches the backend. Which inputs does a stranger control?
 
-_Your notes:_
+InkFeed is a small community application where users can view drawings, search the feed, and leave comments without needing an account. 
+
+A completely unauthenticated stranger controls three entry points:
+1. The search query parameter `q` via `GET /api/posts/search?q=...`
+2. The comment author name via `POST /api/posts/{postId}/comments`
+3. The comment body via `POST /api/posts/{postId}/comments`
+
+The most critical entry point is the search box, as this input is passed directly to the backend database layer to filter posts.
 
 ---
 
@@ -19,70 +26,7 @@ _Your notes:_
 
 ### What I've typed to test the vulnerability and where
 
-```
-(paste the exact text you put here)
-```
+I typed the following payload directly into the search box on the frontend (`http://localhost:3000`):
 
-### What each part of it does
-
-Break your payload into pieces and explain each one. For example: what closes the
-original string, what pulls in the other table, what hides the rest of the query.
-
-_Your notes:_
-
-### What came back
-
-What data appeared that should never have been there? Paste
-a line or two. A screenshot is ideal.
-
-_Your notes:_
-
----
-
-## 3. Why it worked (root cause)
-
-In your own words: why was the database willing to run that instead of the expected behaviour?
-
-_Your notes:_
-
----
-
-## 4. The fix
-
-### Which road did I take?
-
-(parameterized native query / the safe repository method / something else)
-
-_Your notes:_
-
-### Why this fixes the root cause and not just the symptom
-
-"The error went away" is not an answer. Explain why injection is now impossible,
-not just unlikely.
-
-_Your notes:_
-
-### Why I did NOT just block quotes / the word UNION
-
-_Your notes:_
-
----
-
-## 5. Proof the fix holds
-
-I re-ran my original payload after fixing it. Result:
-
-_Your notes:_
-
-A normal search (`pen`, `color`, `comic`) still returns the right posts:
-
-_(yes / no, and anything you noticed)_
-
----
-
-## 6. If I had another hour
-
-What else in this app worries you? (the comment endpoint, the open API, the fact
-that the backend can read password hashes at all...)
-
-_Your notes:_
+```sql
+' UNION SELECT id, email, password FROM users --
