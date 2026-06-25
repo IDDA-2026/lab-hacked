@@ -8,10 +8,7 @@ import com.ironhack.simple_auth.model.Comment;
 import com.ironhack.simple_auth.model.Post;
 import com.ironhack.simple_auth.repository.CommentRepository;
 import com.ironhack.simple_auth.repository.PostRepository;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -24,9 +21,6 @@ public class PostController {
     private final PostRepository postRepository;
     private final CommentRepository commentRepository;
 
-    @PersistenceContext
-    private EntityManager entityManager;
-
     public PostController(PostRepository postRepository, CommentRepository commentRepository) {
         this.postRepository = postRepository;
         this.commentRepository = commentRepository;
@@ -38,19 +32,25 @@ public class PostController {
         return postRepository.findAll().stream().map(PostView::from).toList();
     }
 
+    /**
+     * Safe search using Spring Data JPA's derived query method.
+     *
+     * Spring Data builds a parameterized prepared statement from the method name.
+     * The search term is passed as a bind variable, never concatenated into the SQL
+     * string. The database therefore receives the query structure and the value
+     * separately, making it structurally impossible for input to change the query.
+     *
+     * The old implementation built the query by string concatenation:
+     *   "SELECT id, title, body FROM posts WHERE title LIKE '%" + q + "%' ..."
+     * That allowed a UNION payload to append a second SELECT and dump the users table.
+     * This version cannot be exploited that way.
+     */
     @GetMapping("/search")
-    @SuppressWarnings("unchecked")
     public List<SearchResult> search(@RequestParam(name = "q", defaultValue = "") String q) {
-        String sql = "SELECT id, title, body FROM posts " +
-                "WHERE title LIKE '%" + q + "%' OR body LIKE '%" + q + "%'";
-
-        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
-
-        return rows.stream()
-                .map(row -> new SearchResult(
-                        row[0],
-                        row[1] != null ? row[1].toString() : null,
-                        row[2] != null ? row[2].toString() : null))
+        return postRepository
+                .findByTitleContainingIgnoreCaseOrBodyContainingIgnoreCase(q, q)
+                .stream()
+                .map(post -> new SearchResult(post.getId(), post.getTitle(), post.getBody()))
                 .toList();
     }
 
