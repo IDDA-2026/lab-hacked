@@ -1,5 +1,6 @@
 package com.ironhack.simple_auth.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -35,6 +36,7 @@ public class User {
 
     // Yes, these would be properly hashed in a real app. The point of the lab is
     // that they should NEVER leave the database, no matter how they are stored.
+    @JsonIgnore
     @Column(name = "password_hash")
     private String passwordHash;
 
