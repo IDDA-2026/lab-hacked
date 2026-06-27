@@ -38,13 +38,15 @@ public class PostController {
         return postRepository.findAll().stream().map(PostView::from).toList();
     }
 
-    @GetMapping("/search")
+   @GetMapping("/search")
     @SuppressWarnings("unchecked")
     public List<SearchResult> search(@RequestParam(name = "q", defaultValue = "") String q) {
         String sql = "SELECT id, title, body FROM posts " +
-                "WHERE title LIKE '%" + q + "%' OR body LIKE '%" + q + "%'";
+                     "WHERE title LIKE :keyword OR body LIKE :keyword";
 
-        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
+        List<Object[]> rows = entityManager.createNativeQuery(sql)
+                .setParameter("keyword", "%" + q + "%")
+                .getResultList();
 
         return rows.stream()
                 .map(row -> new SearchResult(
@@ -53,6 +55,9 @@ public class PostController {
                         row[2] != null ? row[2].toString() : null))
                 .toList();
     }
+
+
+
 
     /** Add a comment to a post. No login, no checks. Anyone can drop one. */
     @PostMapping("/{postId}/comments")
