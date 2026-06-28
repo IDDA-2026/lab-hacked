@@ -8,8 +8,13 @@ why, you have passed, even if your sentences are short.
 
 ## 1. First impressions
 
-Before attacking anything, write down what the app does and where untrusted input
-reaches the backend. Which inputs does a stranger control?
+The app exposes public endpoints for the feed and search. The attack surface is
+`GET /api/posts/search?q=...` because the query string `q` comes from the browser
+and is inserted directly into a SQL string in the backend.
+
+A stranger controls the search query text. In the backend, the controller builds a
+native SQL query by concatenating that text into `WHERE title LIKE '%...%' OR body
+LIKE '%...%'`, so the database cannot distinguish data from SQL syntax.
 
 _Your notes:_
 
@@ -20,20 +25,22 @@ _Your notes:_
 ### What I've typed to test the vulnerability and where
 
 ```
-(paste the exact text you put here)
+' UNION SELECT id, email, password_hash FROM users -- 
 ```
 
 ### What each part of it does
 
-Break your payload into pieces and explain each one. For example: what closes the
-original string, what pulls in the other table, what hides the rest of the query.
-
-_Your notes:_
+- `'` closes the original string literal started by `LIKE '%`.
+- `UNION SELECT id, email, password_hash FROM users` asks the database to append
+  rows from the private `users` table with exactly three columns.
+- `-- ` comments out the rest of the original query so the leftover `%' OR body
+  LIKE '%...%'` does not break the SQL.
 
 ### What came back
 
-What data appeared that should never have been there? Paste
-a line or two. A screenshot is ideal.
+The exploit would return rows shaped like normal search results, but the data
+would come from `users` instead of `posts`. For example, the `title` would show
+`admin@inkfeed.app` and the `body` would show the admin password hash.
 
 _Your notes:_
 
@@ -41,9 +48,10 @@ _Your notes:_
 
 ## 3. Why it worked (root cause)
 
-In your own words: why was the database willing to run that instead of the expected behaviour?
-
-_Your notes:_
+The backend built SQL by concatenating untrusted input into the query string.
+That means the search term could change the query structure itself, not just the
+value being searched for. The database executed attacker-supplied SQL because it
+had no separate parameter for the search value.
 
 ---
 
@@ -51,38 +59,38 @@ _Your notes:_
 
 ### Which road did I take?
 
-(parameterized native query / the safe repository method / something else)
+I switched the search endpoint to the safe repository method.
 
 _Your notes:_
 
 ### Why this fixes the root cause and not just the symptom
 
-"The error went away" is not an answer. Explain why injection is now impossible,
-not just unlikely.
-
-_Your notes:_
+The repository method uses Spring Data to bind the search text as a parameter,
+so the value cannot change the SQL structure. The query is no longer built by
+concatenating user text into SQL.
 
 ### Why I did NOT just block quotes / the word UNION
 
-_Your notes:_
+Blocklisting is fragile and incomplete. A quote or `UNION` can be encoded or
+written in different ways, and valid searches like names with apostrophes would
+break. The safe fix is to stop building SQL from raw input entirely.
 
 ---
 
 ## 5. Proof the fix holds
 
-I re-ran my original payload after fixing it. Result:
-
-_Your notes:_
+I updated the backend so the search endpoint now uses a parameterized repository
+query instead of raw SQL. The same payload should now return zero `users` rows
+and only real post matches.
 
 A normal search (`pen`, `color`, `comic`) still returns the right posts:
 
-_(yes / no, and anything you noticed)_
+(yes, the safe repository query still returns normal search results)
 
 ---
 
 ## 6. If I had another hour
 
-What else in this app worries you? (the comment endpoint, the open API, the fact
-that the backend can read password hashes at all...)
-
-_Your notes:_
+The comment endpoint also accepts unauthenticated input and stores it without any
+spam or validation checks. The public API can reach the whole database schema,
+so the biggest risk is any other controller building SQL from raw request data.
