@@ -32,7 +32,10 @@ public class PostController {
         this.commentRepository = commentRepository;
     }
 
-    /** The full feed. Newest stuff first would be nicer, I know, but this is fine for the lab. */
+    /**
+     * The full feed. Newest stuff first would be nicer, I know, but this is fine
+     * for the lab.
+     */
     @GetMapping
     public List<PostView> all() {
         return postRepository.findAll().stream().map(PostView::from).toList();
@@ -41,14 +44,19 @@ public class PostController {
     @GetMapping("/search")
     @SuppressWarnings("unchecked")
     public List<SearchResult> search(@RequestParam(name = "q", defaultValue = "") String q) {
-        String sql = "SELECT id, title, body FROM posts " +
-                "WHERE title LIKE '%" + q + "%' OR body LIKE '%" + q + "%'";
 
-        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
+        String sql = "SELECT id, title, body FROM posts " +
+                "WHERE title LIKE ? OR body LIKE ?";
+
+        List<Object[]> rows = entityManager
+                .createNativeQuery(sql)
+                .setParameter(1, "%" + q + "%")
+                .setParameter(2, "%" + q + "%")
+                .getResultList();
 
         return rows.stream()
                 .map(row -> new SearchResult(
-                        row[0],
+                        ((Number) row[0]).longValue(),
                         row[1] != null ? row[1].toString() : null,
                         row[2] != null ? row[2].toString() : null))
                 .toList();
@@ -62,7 +70,8 @@ public class PostController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Post not found"));
 
         String authorName = (request.authorName() == null || request.authorName().isBlank())
-                ? "Anonymous" : request.authorName();
+                ? "Anonymous"
+                : request.authorName();
 
         Comment comment = new Comment(authorName, request.body(), post);
         Comment saved = commentRepository.save(comment);
