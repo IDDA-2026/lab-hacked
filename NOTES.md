@@ -8,10 +8,10 @@ why, you have passed, even if your sentences are short.
 
 ## 1. First impressions
 
-Before attacking anything, write down what the app does and where untrusted input
-reaches the backend. Which inputs does a stranger control?
+The application allows users to browse posts, search through them, and add comments.
+The search functionality sends user input directly to the backend, where it is used in a database query.
 
-_Your notes:_
+The main untrusted input is the search parameter `q`, which is fully controlled by the user and reaches the backend without proper sanitization or separation from SQL logic.
 
 ---
 
@@ -19,31 +19,37 @@ _Your notes:_
 
 ### What I've typed to test the vulnerability and where
 
-```
-(paste the exact text you put here)
-```
+I entered this in the **search input field** on the frontend (`/api/posts/search?q=`).
+
+---
 
 ### What each part of it does
 
-Break your payload into pieces and explain each one. For example: what closes the
-original string, what pulls in the other table, what hides the rest of the query.
+- `'` → closes the original SQL string and allows injection
+- `UNION SELECT` → combines original query results with another query
+- `id, email, password` → selects sensitive columns from the users table
+- `FROM users` → targets the hidden users table
+- `--` → comments out the rest of the SQL query to avoid syntax errors
 
-_Your notes:_
+---
 
 ### What came back
 
-What data appeared that should never have been there? Paste
-a line or two. A screenshot is ideal.
+The search results included sensitive data that should not be accessible:
+- user emails (e.g. admin@inkfeed.app)
+- password hashes
 
-_Your notes:_
+This confirms a successful SQL injection vulnerability.
 
 ---
 
 ## 3. Why it worked (root cause)
 
-In your own words: why was the database willing to run that instead of the expected behaviour?
+It worked because user input was directly concatenated into a SQL query string in the backend.
 
-_Your notes:_
+This allowed the database to interpret user input as SQL code instead of data.
+
+As a result, attackers were able to modify the query structure and access unauthorized tables.
 
 ---
 
@@ -51,38 +57,44 @@ _Your notes:_
 
 ### Which road did I take?
 
-(parameterized native query / the safe repository method / something else)
+I used a parameterized native query with `EntityManager.setParameter()`.
 
-_Your notes:_
+---
 
 ### Why this fixes the root cause and not just the symptom
 
-"The error went away" is not an answer. Explain why injection is now impossible,
-not just unlikely.
+Parameterized queries separate SQL logic from user input.
 
-_Your notes:_
+This means:
+- SQL structure cannot be changed by user input
+- input is treated strictly as data
+- injection becomes impossible by design
+
+---
 
 ### Why I did NOT just block quotes / the word UNION
 
-_Your notes:_
+Input filtering (blocklists) is not a safe solution because:
+- attackers can bypass filters with alternative syntax or encoding
+- valid user input may break (e.g. names with special characters)
+- it does not eliminate the root cause of the issue
+
+The correct solution is separating SQL logic from data.
 
 ---
 
 ## 5. Proof the fix holds
 
-I re-ran my original payload after fixing it. Result:
+After applying the fix, the same payload no longer returns any user data.
 
-_Your notes:_
+A normal search (`pen`, `color`, `comic`) still works correctly.
 
-A normal search (`pen`, `color`, `comic`) still returns the right posts:
-
-_(yes / no, and anything you noticed)_
+No SQL errors or data leaks occur.
 
 ---
 
 ## 6. If I had another hour
 
-What else in this app worries you? (the comment endpoint, the open API, the fact
-that the backend can read password hashes at all...)
+I would also review the comment endpoint because it accepts raw user input without validation.
 
-_Your notes:_
+Additionally, I would ensure the API follows the principle of least privilege so that sensitive data (like password hashes) is never exposed through public endpoints.
