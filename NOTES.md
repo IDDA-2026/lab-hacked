@@ -1,17 +1,16 @@
 # NOTES.md — The Breach Report
 
-This file is part of the deliverable. We grade the **thinking**, not the length.
-Fill it in as you work, not at the very end. If you can explain what you did and
-why, you have passed, even if your sentences are short.
-
 ---
 
 ## 1. First impressions
 
-Before attacking anything, write down what the app does and where untrusted input
-reaches the backend. Which inputs does a stranger control?
-
 _Your notes:_
+
+This app has a feed with posts (title + body) and a search box that searches 
+both. Anyone using the app controls the `q` parameter in the search request — 
+that's the input I focused on, because the backend was building raw SQL 
+from it directly. The comment box also takes raw input from anyone, but it 
+doesn't use raw SQL, so it's a different story.
 
 ---
 
@@ -20,30 +19,51 @@ _Your notes:_
 ### What I've typed to test the vulnerability and where
 
 ```
-(paste the exact text you put here)
+Tested in the search box on the feed page.
+' UNION SELECT id, email, password_hash FROM users--
 ```
 
 ### What each part of it does
 
-Break your payload into pieces and explain each one. For example: what closes the
-original string, what pulls in the other table, what hides the rest of the query.
-
 _Your notes:_
+
+- `'` closes the string that the backend opens with `LIKE '%`, so my text 
+  stops being a search word and turns into the start of my own SQL.
+- `UNION SELECT id, email, password_hash FROM users` adds rows from the 
+  users table on top of the posts results. Column count (3) and order match 
+  the original query (id, title, body), so the database accepts it. That's 
+  why email shows up where title should be, and password_hash shows up 
+  where body should be.
+- `--` comments out everything left on that line, so the leftover part of 
+  the original query doesn't cause a syntax error.
+
 
 ### What came back
 
-What data appeared that should never have been there? Paste
-a line or two. A screenshot is ideal.
-
 _Your notes:_
 
+All users, including admin@inkfeed.app, showed up in the search results 
+looking like normal posts — email instead of title, password hash instead 
+of body.
+
+![breach screenshot](lab-inkfeed.png)
 ---
 
 ## 3. Why it worked (root cause)
 
-In your own words: why was the database willing to run that instead of the expected behaviour?
-
 _Your notes:_
+
+The search endpoint built the SQL by gluing my input straight into the 
+string with `+`:
+
+```java
+String sql = "SELECT id, title, body FROM posts " +
+        "WHERE title LIKE '%" + q + "%' OR body LIKE '%" + q + "%'";
+```
+
+The database couldn't tell my input apart from real SQL. Whatever I typed 
+became part of the query itself, not just something to search for.
+
 
 ---
 
@@ -51,38 +71,60 @@ _Your notes:_
 
 ### Which road did I take?
 
-(parameterized native query / the safe repository method / something else)
-
 _Your notes:_
+
+Used the safe repository method that was already in PostRepository.java 
+but not being used:
+
+```java
+findByTitleContainingIgnoreCaseOrBodyContainingIgnoreCase(q, q)
+``` 
 
 ### Why this fixes the root cause and not just the symptom
 
-"The error went away" is not an answer. Explain why injection is now impossible,
-not just unlikely.
-
 _Your notes:_
+
+Spring Data builds this query and sends `q` as a real parameter, not as 
+text glued into the SQL. The database gets the query and the value 
+separately, so the value can never change the query. My input is always 
+just data to search for, never SQL commands, no matter what I type.
 
 ### Why I did NOT just block quotes / the word UNION
 
 _Your notes:_
 
+Blocking characters or keywords doesn't really work — there's always 
+another way around it. It also breaks normal use, like someone named 
+O'Brien searching for their posts. The real fix is to stop building SQL 
+by gluing strings together, so input can't change the query no matter what.
+
+
 ---
 
 ## 5. Proof the fix holds
 
-I re-ran my original payload after fixing it. Result:
-
 _Your notes:_
 
-A normal search (`pen`, `color`, `comic`) still returns the right posts:
+Result: 0 results, no errors, nothing leaked.
+Normal search (pen, color, comic) still works:
 
-_(yes / no, and anything you noticed)_
+Yes — searching "pen" returned the pen post and the color theory post 
+(mentions "pencil"). No errors in browser console or backend terminal.
 
 ---
 
 ## 6. If I had another hour
 
-What else in this app worries you? (the comment endpoint, the open API, the fact
-that the backend can read password hashes at all...)
-
 _Your notes:_
+
+- Comment endpoint takes raw input from anyone, no login. Tested it with 
+  ' OR '1'='1 and it just saved as plain text, no injection — because it 
+  uses commentRepository.save(), not raw SQL. Still no length/spam check though.
+- Even after the fix, the backend's database user can still read the users 
+  table. If another bug shows up later, that access shouldn't be there at 
+  all — the search API should only be able to read posts.
+- The fact that password hashes were even reachable from a posts search 
+  endpoint shows the backend has more database access than it actually needs.
+- No length limit on the search input. Not a security issue anymore because 
+  of the parameterized query, but a basic check would be a reasonable extra 
+  layer on top.
