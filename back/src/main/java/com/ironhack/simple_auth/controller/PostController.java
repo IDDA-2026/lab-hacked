@@ -39,18 +39,14 @@ public class PostController {
     }
 
     @GetMapping("/search")
-    @SuppressWarnings("unchecked")
     public List<SearchResult> search(@RequestParam(name = "q", defaultValue = "") String q) {
-        String sql = "SELECT id, title, body FROM posts " +
-                "WHERE title LIKE '%" + q + "%' OR body LIKE '%" + q + "%'";
+        List<Post> posts = postRepository.findByTitleContainingIgnoreCaseOrBodyContainingIgnoreCase(q, q);
 
-        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
-
-        return rows.stream()
-                .map(row -> new SearchResult(
-                        row[0],
-                        row[1] != null ? row[1].toString() : null,
-                        row[2] != null ? row[2].toString() : null))
+        return posts.stream()
+                .map(post -> new SearchResult(
+                        post.getId(),
+                        post.getTitle(),
+                        post.getBody()))
                 .toList();
     }
 
