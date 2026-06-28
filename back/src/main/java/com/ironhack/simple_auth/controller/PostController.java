@@ -38,13 +38,24 @@ public class PostController {
         return postRepository.findAll().stream().map(PostView::from).toList();
     }
 
+    /**
+     * FIX: the query text is now a fixed string with a bound parameter (?1),
+     * never built by concatenating user input. The search term is sent to
+     * the database separately, as a value, not as part of the SQL itself.
+     * No matter what characters `q` contains (quotes, UNION, --, anything),
+     * the database can only ever compare it against title/body as data. It
+     * has no way to reinterpret it as a new piece of SQL syntax, because the
+     * query's shape was already fixed before the value was even attached.
+     */
     @GetMapping("/search")
     @SuppressWarnings("unchecked")
     public List<SearchResult> search(@RequestParam(name = "q", defaultValue = "") String q) {
         String sql = "SELECT id, title, body FROM posts " +
-                "WHERE title LIKE '%" + q + "%' OR body LIKE '%" + q + "%'";
+                "WHERE title LIKE CONCAT('%', ?1, '%') OR body LIKE CONCAT('%', ?1, '%')";
 
-        List<Object[]> rows = entityManager.createNativeQuery(sql).getResultList();
+        List<Object[]> rows = entityManager.createNativeQuery(sql)
+                .setParameter(1, q)
+                .getResultList();
 
         return rows.stream()
                 .map(row -> new SearchResult(
